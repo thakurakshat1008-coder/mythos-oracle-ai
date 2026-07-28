@@ -36,7 +36,7 @@ export const Route = createFileRoute("/")({
           "Mythos is a mystical multi-model AI chat oracle powered by GPT-5, Gemini and more. Ask anything — code, art, wisdom, ideas.",
       },
       { property: "og:title", content: "Mythos — The Oracle of All AI Minds" },
-      { property: "og:description", content: "A mystical multi-model AI chat oracle." },
+      { property: "og:description", content: "Mythos is a mystical multi-model AI chat oracle powered by GPT-5, Gemini and more. Ask anything — code, art, wisdom, ideas." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
