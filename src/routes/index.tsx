@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -22,6 +22,12 @@ import {
   Mic,
   X,
   FileText,
+  MessageSquare,
+  Pencil,
+  Trash2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Lock,
 } from "lucide-react";
 import logo from "@/assets/mythos-logo.png";
 import { CosmicBackground } from "@/components/CosmicBackground";
@@ -47,20 +53,24 @@ export const Route = createFileRoute("/")({
 type ModelOption = {
   id: string;
   label: string;
-  family: "GPT" | "Gemini";
+  family: "GPT" | "Gemini" | "Claude" | "Manus";
   hint: string;
+  available: boolean;
 };
 
 const MODELS: ModelOption[] = [
-  { id: "openai/gpt-5.6-sol", label: "GPT-5.6 Sol", family: "GPT", hint: "Flagship reasoning" },
-  { id: "openai/gpt-5.6-terra", label: "GPT-5.6 Terra", family: "GPT", hint: "Balanced everyday" },
-  { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", family: "GPT", hint: "Fast & lightweight" },
-  { id: "openai/gpt-5.5", label: "GPT-5.5", family: "GPT", hint: "Frontier complex tasks" },
-  { id: "openai/gpt-5.4", label: "GPT-5.4", family: "GPT", hint: "Deep analysis" },
-  { id: "openai/gpt-5.4-mini", label: "GPT-5.4 Mini", family: "GPT", hint: "Quick reasoning" },
-  { id: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", family: "Gemini", hint: "Multimodal power" },
-  { id: "google/gemini-3.6-flash", label: "Gemini 3.6 Flash", family: "Gemini", hint: "Fast multimodal" },
-  { id: "google/gemini-3.1-flash-lite", label: "Gemini Flash Lite", family: "Gemini", hint: "Highest throughput" },
+  { id: "openai/gpt-5.6-sol", label: "GPT-5.6 Sol", family: "GPT", hint: "Flagship reasoning", available: true },
+  { id: "openai/gpt-5.6-terra", label: "GPT-5.6 Terra", family: "GPT", hint: "Balanced everyday", available: true },
+  { id: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna", family: "GPT", hint: "Fast & lightweight", available: true },
+  { id: "openai/gpt-5.5", label: "GPT-5.5", family: "GPT", hint: "Frontier complex tasks", available: true },
+  { id: "openai/gpt-5.4", label: "GPT-5.4", family: "GPT", hint: "Deep analysis", available: true },
+  { id: "openai/gpt-5.4-mini", label: "GPT-5.4 Mini", family: "GPT", hint: "Quick reasoning", available: true },
+  { id: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", family: "Gemini", hint: "Multimodal power", available: true },
+  { id: "google/gemini-3.6-flash", label: "Gemini 3.6 Flash", family: "Gemini", hint: "Fast multimodal", available: true },
+  { id: "google/gemini-3.1-flash-lite", label: "Gemini Flash Lite", family: "Gemini", hint: "Highest throughput", available: true },
+  { id: "anthropic/claude-opus", label: "Claude Opus", family: "Claude", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "anthropic/claude-sonnet", label: "Claude Sonnet", family: "Claude", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "manus/manus-agent", label: "Manus Agent", family: "Manus", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
 ];
 
 type Persona = {
@@ -131,6 +141,45 @@ const PROMPT_STARTERS = [
 
 const ACCEPT_TYPES = "image/*,application/pdf,.pdf,.txt,.md";
 
+type Thread = {
+  id: string;
+  title: string;
+  messages: UIMessage[];
+  updatedAt: number;
+};
+
+const THREADS_KEY = "mythos.threads.v1";
+const ACTIVE_KEY = "mythos.activeThread.v1";
+
+function newThread(): Thread {
+  return {
+    id: (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)),
+    title: "New conversation",
+    messages: [],
+    updatedAt: Date.now(),
+  };
+}
+
+function loadThreads(): { threads: Thread[]; activeId: string } {
+  if (typeof window === "undefined") {
+    const t = newThread();
+    return { threads: [t], activeId: t.id };
+  }
+  try {
+    const raw = window.localStorage.getItem(THREADS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Thread[]) : [];
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const activeId = window.localStorage.getItem(ACTIVE_KEY) || parsed[0].id;
+      const active = parsed.find((t) => t.id === activeId)?.id ?? parsed[0].id;
+      return { threads: parsed, activeId: active };
+    }
+  } catch {
+    /* ignore */
+  }
+  const t = newThread();
+  return { threads: [t], activeId: t.id };
+}
+
 function MythosPage() {
   const [modelId, setModelId] = useState(MODELS[0].id);
   const [persona, setPersona] = useState(PERSONAS[0]);
@@ -139,10 +188,30 @@ function MythosPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const initial = useMemo(() => loadThreads(), []);
+  const [threads, setThreads] = useState<Thread[]>(initial.threads);
+  const [activeId, setActiveId] = useState<string>(initial.activeId);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  const activeThread = threads.find((t) => t.id === activeId) ?? threads[0];
+
+  // Persist
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(THREADS_KEY, JSON.stringify(threads));
+    } catch { /* ignore */ }
+  }, [threads]);
+  useEffect(() => {
+    try { window.localStorage.setItem(ACTIVE_KEY, activeId); } catch { /* ignore */ }
+  }, [activeId]);
 
   const transport = useMemo(
     () =>
@@ -156,6 +225,8 @@ function MythosPage() {
   );
 
   const { messages, sendMessage, status, stop, setMessages } = useChat({
+    id: activeId,
+    messages: activeThread?.messages ?? [],
     transport,
     onError: (e) => console.error(e),
   });
@@ -163,9 +234,34 @@ function MythosPage() {
   const isLoading = status === "submitted" || status === "streaming";
   const hasMessages = messages.length > 0;
 
+  // Sync messages back to the active thread
+  useEffect(() => {
+    setThreads((prev) =>
+      prev.map((t) => {
+        if (t.id !== activeId) return t;
+        const firstUser = messages.find((m) => m.role === "user");
+        const derivedTitle =
+          t.title !== "New conversation"
+            ? t.title
+            : firstUser
+              ? firstUser.parts
+                  .map((p) => (p.type === "text" ? p.text : ""))
+                  .join(" ")
+                  .trim()
+                  .slice(0, 48) || "New conversation"
+              : "New conversation";
+        return { ...t, messages, title: derivedTitle, updatedAt: Date.now() };
+      }),
+    );
+  }, [messages, activeId]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, status]);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, [activeId]);
 
   const handleSend = (text?: string) => {
     const value = (text ?? input).trim();
@@ -224,165 +320,341 @@ function MythosPage() {
     setRecording(false);
   };
 
+  const createThread = useCallback(() => {
+    const t = newThread();
+    setThreads((prev) => [t, ...prev]);
+    setActiveId(t.id);
+    setMessages([]);
+    setInput("");
+    setFiles([]);
+  }, [setMessages]);
+
+  const selectThread = (id: string) => {
+    if (id === activeId) return;
+    setActiveId(id);
+    const t = threads.find((x) => x.id === id);
+    setMessages(t?.messages ?? []);
+  };
+
+  const deleteThread = (id: string) => {
+    setThreads((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      if (next.length === 0) {
+        const fresh = newThread();
+        setActiveId(fresh.id);
+        setMessages([]);
+        return [fresh];
+      }
+      if (id === activeId) {
+        setActiveId(next[0].id);
+        setMessages(next[0].messages);
+      }
+      return next;
+    });
+  };
+
+  const commitRename = (id: string) => {
+    const v = renameValue.trim();
+    if (v) {
+      setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title: v } : t)));
+    }
+    setRenamingId(null);
+    setRenameValue("");
+  };
+
   return (
     <div className="relative min-h-screen text-foreground">
       <CosmicBackground />
 
-      <header className="sticky top-0 z-30 border-b border-border/40 glass-panel">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <img
-              src={logo}
-              alt="Mythos logo"
-              width={40}
-              height={40}
-              className="h-10 w-10 drop-shadow-[0_0_16px_oklch(0.78_0.17_75_/_0.5)]"
-            />
-            <div>
-              <h1 className="font-display text-xl font-semibold tracking-wide text-gradient-gold">
-                MYTHOS
-              </h1>
-              <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
-                Oracle of AI Minds
-              </p>
-            </div>
-          </div>
-
+      {/* Sidebar */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-border/50 glass-panel transition-transform duration-300 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setMessages([])}
-              className="flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs text-muted-foreground transition hover:border-primary/60 hover:text-foreground"
-              aria-label="New conversation"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New
-            </button>
-            <ModelPicker
-              modelId={modelId}
-              setModelId={setModelId}
-              open={modelOpen}
-              setOpen={setModelOpen}
-            />
+            <img src={logo} alt="" width={22} height={22} className="h-5 w-5" />
+            <span className="font-display text-sm tracking-wide text-gradient-gold">MYTHOS</span>
           </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="rounded-md p-1 text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+            aria-label="Close sidebar"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
         </div>
-      </header>
+        <div className="p-3">
+          <button
+            onClick={createThread}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-cosmic px-3 py-2 text-sm font-medium text-primary-foreground shadow-[var(--shadow-gold)] transition hover:scale-[1.02] animate-gradient"
+          >
+            <Plus className="h-4 w-4" /> New conversation
+          </button>
+        </div>
+        <div className="px-3 pb-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+          History
+        </div>
+        <div className="flex-1 overflow-y-auto px-2 pb-3">
+          {threads.length === 0 && (
+            <div className="px-2 py-4 text-xs text-muted-foreground">No conversations yet.</div>
+          )}
+          <ul className="flex flex-col gap-1">
+            {[...threads]
+              .sort((a, b) => b.updatedAt - a.updatedAt)
+              .map((t) => {
+                const active = t.id === activeId;
+                const isRenaming = renamingId === t.id;
+                return (
+                  <li key={t.id}>
+                    <div
+                      className={`group flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition ${
+                        active
+                          ? "bg-primary/15 text-foreground"
+                          : "text-foreground/80 hover:bg-primary/10"
+                      }`}
+                    >
+                      <MessageSquare
+                        className={`h-4 w-4 shrink-0 ${active ? "text-gold" : "text-muted-foreground"}`}
+                      />
+                      {isRenaming ? (
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={() => commitRename(t.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitRename(t.id);
+                            if (e.key === "Escape") {
+                              setRenamingId(null);
+                              setRenameValue("");
+                            }
+                          }}
+                          className="flex-1 rounded-md bg-background/70 px-2 py-1 text-xs text-foreground outline-none ring-1 ring-primary/50"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => selectThread(t.id)}
+                          className="flex-1 truncate text-left"
+                          title={t.title}
+                        >
+                          {t.title}
+                        </button>
+                      )}
+                      {!isRenaming && (
+                        <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRenamingId(t.id);
+                              setRenameValue(t.title);
+                            }}
+                            className="rounded p-1 text-muted-foreground hover:bg-primary/15 hover:text-gold"
+                            aria-label="Rename conversation"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm(`Delete "${t.title}"?`)) deleteThread(t.id);
+                            }}
+                            className="rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                            aria-label="Delete conversation"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+          </ul>
+        </div>
+        <div className="border-t border-border/40 px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+          Stored in this browser
+        </div>
+      </aside>
 
-      <main className="mx-auto flex max-w-4xl flex-col px-4 pb-48 pt-6">
-        {!hasMessages ? (
-          <Landing persona={persona} setPersona={setPersona} onPick={(t) => handleSend(t)} />
-        ) : (
-          <div ref={scrollRef} className="flex flex-col gap-6 pt-4">
-            {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
-            ))}
-            {status === "submitted" && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                Mythos is consulting the stars…
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* Composer */}
-      <div className="fixed inset-x-0 bottom-0 z-20 pointer-events-none">
-        <div className="mx-auto max-w-4xl px-4 pb-6 pointer-events-auto">
-          <div className="glass-panel rounded-2xl p-2 shadow-[var(--shadow-oracle)]">
-            {files.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-2 pb-2 pt-1">
-                {files.map((f, i) => (
-                  <AttachmentChip
-                    key={i}
-                    file={f}
-                    onRemove={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                  />
-                ))}
-              </div>
-            )}
-            <div className="flex items-end gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ACCEPT_TYPES}
-                multiple
-                hidden
-                onChange={(e) => {
-                  handleAttach(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                aria-label="Attach files"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card/50 text-muted-foreground transition hover:border-primary/60 hover:text-gold"
-              >
-                <Paperclip className="h-4 w-4" />
-              </button>
-              <button
-                onClick={recording ? stopRecording : startRecording}
-                disabled={transcribing}
-                aria-label={recording ? "Stop recording" : "Record voice"}
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
-                  recording
-                    ? "border-destructive/60 bg-destructive/20 text-destructive-foreground animate-pulse"
-                    : "border-border/60 bg-card/50 text-muted-foreground hover:border-primary/60 hover:text-gold"
-                } disabled:opacity-50`}
-              >
-                {transcribing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Mic className="h-4 w-4" />
-                )}
-              </button>
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                rows={1}
-                placeholder={
-                  recording
-                    ? "Listening…"
-                    : transcribing
-                      ? "Transcribing…"
-                      : "Ask the oracle anything…"
-                }
-                className="min-h-[44px] max-h-40 flex-1 resize-none bg-transparent px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-              />
-              {isLoading ? (
+      {/* Main column */}
+      <div className={`transition-[padding] duration-300 ${sidebarOpen ? "lg:pl-72" : "pl-0"}`}>
+        <header className="sticky top-0 z-30 border-b border-border/40 glass-panel">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              {!sidebarOpen && (
                 <button
-                  onClick={stop}
-                  aria-label="Stop"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-destructive/80 text-destructive-foreground transition hover:bg-destructive"
+                  onClick={() => setSidebarOpen(true)}
+                  className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+                  aria-label="Open sidebar"
                 >
-                  <Square className="h-4 w-4" />
-                </button>
-              ) : (
-                <button
-                  onClick={() => handleSend()}
-                  disabled={!input.trim() && files.length === 0}
-                  aria-label="Send"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cosmic text-primary-foreground shadow-[var(--shadow-gold)] transition hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 animate-gradient"
-                >
-                  <Send className="h-4 w-4" />
+                  <PanelLeftOpen className="h-4 w-4" />
                 </button>
               )}
+              <img
+                src={logo}
+                alt="Mythos logo"
+                width={40}
+                height={40}
+                className="h-10 w-10 drop-shadow-[0_0_16px_oklch(0.78_0.17_75_/_0.5)]"
+              />
+              <div>
+                <h1 className="font-display text-xl font-semibold tracking-wide text-gradient-gold">
+                  MYTHOS
+                </h1>
+                <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+                  Oracle of AI Minds
+                </p>
+              </div>
             </div>
-            <div className="flex items-center justify-between px-3 pb-1 pt-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-              <span>
-                Speaking as <span className="text-gold">{persona.label}</span> ·{" "}
-                <span className="text-gold">{MODELS.find((m) => m.id === modelId)?.label}</span>
-              </span>
-              <span className="hidden sm:inline">Enter to send · Shift+Enter for newline</span>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={createThread}
+                className="hidden sm:flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs text-muted-foreground transition hover:border-primary/60 hover:text-foreground"
+                aria-label="New conversation"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New
+              </button>
+              <ModelPicker
+                modelId={modelId}
+                setModelId={setModelId}
+                open={modelOpen}
+                setOpen={setModelOpen}
+              />
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto flex max-w-4xl flex-col px-4 pb-48 pt-6">
+          {!hasMessages ? (
+            <Landing persona={persona} setPersona={setPersona} onPick={(t) => handleSend(t)} />
+          ) : (
+            <div ref={scrollRef} className="flex flex-col gap-6 pt-4">
+              {messages.map((m) => (
+                <MessageBubble key={m.id} message={m} />
+              ))}
+              {status === "submitted" && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  Mythos is consulting the stars…
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+
+        {/* Composer */}
+        <div className={`fixed inset-x-0 bottom-0 z-20 pointer-events-none ${sidebarOpen ? "lg:pl-72" : ""}`}>
+          <div className="mx-auto max-w-4xl px-4 pb-6 pointer-events-auto">
+            <div className="composer-panel rounded-2xl p-2 shadow-[var(--shadow-oracle)]">
+              {files.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-2 pb-2 pt-1">
+                  {files.map((f, i) => (
+                    <AttachmentChip
+                      key={i}
+                      file={f}
+                      onRemove={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                    />
+                  ))}
+                </div>
+              )}
+              <div className="flex items-end gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPT_TYPES}
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    handleAttach(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Attach files"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card/70 text-muted-foreground transition hover:border-primary/60 hover:text-gold"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={recording ? stopRecording : startRecording}
+                  disabled={transcribing}
+                  aria-label={recording ? "Stop recording" : "Record voice"}
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
+                    recording
+                      ? "border-destructive/60 bg-destructive/20 text-destructive-foreground animate-pulse"
+                      : "border-border/60 bg-card/70 text-muted-foreground hover:border-primary/60 hover:text-gold"
+                  } disabled:opacity-50`}
+                >
+                  {transcribing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mic className="h-4 w-4" />
+                  )}
+                </button>
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  rows={1}
+                  placeholder={
+                    recording
+                      ? "Listening…"
+                      : transcribing
+                        ? "Transcribing…"
+                        : "Ask the oracle anything…"
+                  }
+                  className="composer-input min-h-[44px] max-h-40 flex-1 resize-none rounded-xl px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                {isLoading ? (
+                  <button
+                    onClick={stop}
+                    aria-label="Stop"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-destructive/80 text-destructive-foreground transition hover:bg-destructive"
+                  >
+                    <Square className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleSend()}
+                    disabled={!input.trim() && files.length === 0}
+                    aria-label="Send"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cosmic text-primary-foreground shadow-[var(--shadow-gold)] transition hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 animate-gradient"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center justify-between px-3 pb-1 pt-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+                <span>
+                  Speaking as <span className="text-gold">{persona.label}</span> ·{" "}
+                  <span className="text-gold">{MODELS.find((m) => m.id === modelId)?.label}</span>
+                </span>
+                <span className="hidden sm:inline">Enter to send · Shift+Enter for newline</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Sidebar backdrop on small screens */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-background/40 backdrop-blur-sm lg:hidden"
+          aria-hidden
+        />
+      )}
     </div>
   );
 }
@@ -397,7 +669,7 @@ function AttachmentChip({ file, onRemove }: { file: File; onRemove: () => void }
     return () => URL.revokeObjectURL(u);
   }, [file, isImage]);
   return (
-    <div className="group relative flex items-center gap-2 rounded-lg border border-border/60 bg-card/70 py-1 pl-1 pr-2 text-xs">
+    <div className="group relative flex items-center gap-2 rounded-lg border border-border/60 bg-card/80 py-1 pl-1 pr-2 text-xs">
       {isImage && url ? (
         <img src={url} alt={file.name} className="h-8 w-8 rounded object-cover" />
       ) : (
@@ -442,31 +714,52 @@ function ModelPicker({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-xl border border-border/60 glass-panel shadow-[var(--shadow-oracle)]">
+          <div className="absolute right-0 z-20 mt-2 w-80 overflow-hidden rounded-xl border border-border/60 glass-panel shadow-[var(--shadow-oracle)]">
             <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground">
               Choose your mind
             </div>
-            <div className="max-h-80 overflow-y-auto">
-              {MODELS.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => {
-                    setModelId(m.id);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm transition hover:bg-primary/10 ${
-                    m.id === modelId ? "bg-primary/15" : ""
-                  }`}
-                >
-                  <div>
-                    <div className="font-medium text-foreground">{m.label}</div>
-                    <div className="text-xs text-muted-foreground">{m.hint}</div>
-                  </div>
-                  <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {m.family}
-                  </span>
-                </button>
-              ))}
+            <div className="max-h-96 overflow-y-auto">
+              {MODELS.map((m) => {
+                const disabled = !m.available;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      if (disabled) return;
+                      setModelId(m.id);
+                      setOpen(false);
+                    }}
+                    disabled={disabled}
+                    title={disabled ? "Coming soon — will fall back to GPT-5.6 Sol" : m.hint}
+                    className={`flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm transition ${
+                      disabled
+                        ? "cursor-not-allowed opacity-55"
+                        : "hover:bg-primary/10"
+                    } ${m.id === modelId ? "bg-primary/15" : ""}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 font-medium text-foreground">
+                        {m.label}
+                        {disabled && <Lock className="h-3 w-3 text-muted-foreground" />}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">{m.hint}</div>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+                        disabled
+                          ? "border-border/40 text-muted-foreground/70"
+                          : "border-border/60 text-muted-foreground"
+                      }`}
+                    >
+                      {m.family}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="border-t border-border/40 px-3 py-2 text-[10px] leading-relaxed text-muted-foreground">
+              Claude & Manus are coming soon via the Lovable AI Gateway. Selecting them will
+              gracefully fall back to GPT-5.6 Sol until they're live.
             </div>
           </div>
         </>
