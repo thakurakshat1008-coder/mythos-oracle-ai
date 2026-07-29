@@ -1,0 +1,14 @@
+{
+  "name": "Mythos — Oracle of AI Minds",
+  "short_name": "Mythos",
+  "description": "A mystical multi-model AI chat oracle powered by GPT-5, Gemini and more.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0817",
+  "theme_color": "#1a1130",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "any", "type": "image/x-icon" }
+  ]
+}

@@ -28,6 +28,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Lock,
+  Copy,
+  Download,
+  Printer,
+  ImagePlus,
+  Check,
 } from "lucide-react";
 import logo from "@/assets/mythos-logo.png";
 import { CosmicBackground } from "@/components/CosmicBackground";
@@ -53,7 +58,7 @@ export const Route = createFileRoute("/")({
 type ModelOption = {
   id: string;
   label: string;
-  family: "GPT" | "Gemini" | "Claude" | "Manus";
+  family: "GPT" | "Gemini" | "Claude" | "Manus" | "Grok" | "Llama" | "DeepSeek" | "Mistral";
   hint: string;
   available: boolean;
 };
@@ -70,6 +75,10 @@ const MODELS: ModelOption[] = [
   { id: "google/gemini-3.1-flash-lite", label: "Gemini Flash Lite", family: "Gemini", hint: "Highest throughput", available: true },
   { id: "anthropic/claude-opus", label: "Claude Opus", family: "Claude", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
   { id: "anthropic/claude-sonnet", label: "Claude Sonnet", family: "Claude", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "xai/grok-4", label: "Grok 4", family: "Grok", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "meta/llama-3.3-70b", label: "Llama 3.3 70B", family: "Llama", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "deepseek/deepseek-r1", label: "DeepSeek R1", family: "DeepSeek", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "mistral/mistral-large", label: "Mistral Large", family: "Mistral", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
   { id: "manus/manus-agent", label: "Manus Agent", family: "Manus", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
 ];
 
@@ -189,6 +198,8 @@ function MythosPage() {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mode, setMode] = useState<"chat" | "image">("chat");
+  const [generating, setGenerating] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -263,7 +274,50 @@ function MythosPage() {
     textareaRef.current?.focus();
   }, [activeId]);
 
+  const handleGenerateImage = async (text?: string) => {
+    const value = (text ?? input).trim();
+    if (!value || generating) return;
+    setInput("");
+    // Append user prompt as a message
+    const userMsg: UIMessage = {
+      id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+      role: "user",
+      parts: [{ type: "text", text: `🎨 ${value}` }],
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: value }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { url } = (await res.json()) as { url: string };
+      const assistantMsg: UIMessage = {
+        id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+        role: "assistant",
+        parts: [
+          { type: "file", url, mediaType: "image/png", filename: "mythos-image.png" } as never,
+          { type: "text", text: `*Generated image for:* "${value}"` },
+        ],
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+    } catch (e) {
+      console.error(e);
+      const errMsg: UIMessage = {
+        id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+        role: "assistant",
+        parts: [{ type: "text", text: "The vision faltered. Please try again." }],
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleSend = (text?: string) => {
+    if (mode === "image") return handleGenerateImage(text);
     const value = (text ?? input).trim();
     if ((!value && files.length === 0) || isLoading) return;
     const dt = new DataTransfer();
@@ -574,6 +628,18 @@ function MythosPage() {
                   }}
                 />
                 <button
+                  onClick={() => setMode(mode === "image" ? "chat" : "image")}
+                  aria-label={mode === "image" ? "Switch to chat mode" : "Switch to image mode"}
+                  title={mode === "image" ? "Chat mode" : "Image mode"}
+                  className={`hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
+                    mode === "image"
+                      ? "border-primary bg-primary/20 text-gold shadow-[var(--shadow-gold)]"
+                      : "border-border/60 bg-card/70 text-muted-foreground hover:border-primary/60 hover:text-gold"
+                  }`}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                </button>
+                <button
                   onClick={() => fileInputRef.current?.click()}
                   aria-label="Attach files"
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card/70 text-muted-foreground transition hover:border-primary/60 hover:text-gold"
@@ -612,7 +678,11 @@ function MythosPage() {
                       ? "Listening…"
                       : transcribing
                         ? "Transcribing…"
-                        : "Ask the oracle anything…"
+                        : generating
+                          ? "Painting your vision…"
+                          : mode === "image"
+                            ? "Describe an image to conjure…"
+                            : "Ask the oracle anything…"
                   }
                   className="composer-input min-h-[44px] max-h-40 flex-1 resize-none rounded-xl px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
@@ -627,20 +697,32 @@ function MythosPage() {
                 ) : (
                   <button
                     onClick={() => handleSend()}
-                    disabled={!input.trim() && files.length === 0}
+                    disabled={(!input.trim() && files.length === 0) || generating}
                     aria-label="Send"
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cosmic text-primary-foreground shadow-[var(--shadow-gold)] transition hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 animate-gradient"
                   >
-                    <Send className="h-4 w-4" />
+                    {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </button>
                 )}
               </div>
-              <div className="flex items-center justify-between px-3 pb-1 pt-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-                <span>
-                  Speaking as <span className="text-gold">{persona.label}</span> ·{" "}
-                  <span className="text-gold">{MODELS.find((m) => m.id === modelId)?.label}</span>
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 pb-1 pt-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+                <span className="min-w-0 truncate">
+                  {mode === "image" ? (
+                    <>Mode <span className="text-gold">Image ✨</span></>
+                  ) : (
+                    <>
+                      Speaking as <span className="text-gold">{persona.label}</span> ·{" "}
+                      <span className="text-gold">{MODELS.find((m) => m.id === modelId)?.label}</span>
+                    </>
+                  )}
                 </span>
-                <span className="hidden sm:inline">Enter to send · Shift+Enter for newline</span>
+                <button
+                  onClick={() => setMode(mode === "image" ? "chat" : "image")}
+                  className="sm:hidden rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-gold"
+                >
+                  {mode === "image" ? "Chat" : "Image"}
+                </button>
+                <span className="hidden md:inline">Enter to send · Shift+Enter for newline</span>
               </div>
             </div>
           </div>
@@ -778,16 +860,16 @@ function Landing({
   onPick: (t: string) => void;
 }) {
   return (
-    <section className="flex flex-col items-center gap-10 py-8 text-center">
+    <section className="flex flex-col items-center gap-8 py-6 text-center sm:gap-10 sm:py-8">
       <div className="flex flex-col items-center gap-4">
         <img
           src={logo}
           alt="Mythos"
           width={112}
           height={112}
-          className="h-28 w-28 animate-float-slow drop-shadow-[0_0_40px_oklch(0.78_0.17_75_/_0.55)]"
+          className="h-20 w-20 animate-float-slow drop-shadow-[0_0_40px_oklch(0.78_0.17_75_/_0.55)] sm:h-28 sm:w-28"
         />
-        <h2 className="font-display text-5xl font-semibold leading-tight tracking-wide sm:text-6xl">
+        <h2 className="font-display text-4xl font-semibold leading-tight tracking-wide sm:text-6xl">
           <span className="text-gradient-gold">Mythos</span>
         </h2>
         <p className="max-w-xl text-balance text-base text-muted-foreground sm:text-lg">
@@ -898,18 +980,152 @@ function MessageBubble({ message }: { message: UIMessage }) {
   }
 
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex items-start gap-2 sm:gap-3">
       <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary/40 bg-card/70 animate-pulse-glow">
         <Sparkles className="h-4 w-4 text-gold" />
       </div>
-      <div className="max-w-[85%] flex-1">
+      <div className="min-w-0 max-w-full flex-1 sm:max-w-[85%]">
         <div className="mb-1 font-display text-xs uppercase tracking-[0.25em] text-gold">
           Mythos
         </div>
+        {fileParts.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {fileParts.map((p, i) =>
+              p.mediaType?.startsWith("image/") ? (
+                <a
+                  key={i}
+                  href={p.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block overflow-hidden rounded-xl border border-border/60 shadow-[var(--shadow-oracle)]"
+                >
+                  <img
+                    src={p.url}
+                    alt={p.filename ?? "generated image"}
+                    className="max-h-96 w-auto max-w-full"
+                  />
+                </a>
+              ) : (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 rounded-lg bg-card/70 px-2 py-1 text-xs"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {p.filename ?? "file"}
+                </div>
+              ),
+            )}
+          </div>
+        )}
         <div className="mythos-prose text-sm leading-relaxed text-foreground/95">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
         </div>
+        <AssistantActions text={text} imageUrl={fileParts.find((p) => p.mediaType?.startsWith("image/"))?.url} />
       </div>
+    </div>
+  );
+}
+
+function AssistantActions({ text, imageUrl }: { text: string; imageUrl?: string }) {
+  const [copied, setCopied] = useState(false);
+  if (!text && !imageUrl) return null;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const download = (mime: string, ext: string) => {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mythos-${Date.now()}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadImage = async () => {
+    if (!imageUrl) return;
+    try {
+      const res = await fetch(imageUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mythos-image-${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const printPdf = () => {
+    const w = window.open("", "_blank", "width=800,height=1000");
+    if (!w) return;
+    const safe = text.replace(/</g, "&lt;");
+    w.document.write(`<!doctype html><html><head><title>Mythos response</title>
+      <style>
+        body{font-family:Georgia,serif;max-width:720px;margin:40px auto;padding:0 24px;color:#111;line-height:1.6}
+        h1{font-family:'Cinzel',serif;color:#8b6b1f;text-align:center}
+        pre{white-space:pre-wrap;word-wrap:break-word;background:#f5f2ea;padding:12px;border-radius:8px}
+        img{max-width:100%;border-radius:8px;margin:16px 0}
+      </style></head><body>
+      <h1>Mythos</h1>
+      ${imageUrl ? `<img src="${imageUrl}" alt="" />` : ""}
+      <pre>${safe}</pre>
+      <script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script>
+    </body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+      {text && (
+        <button
+          onClick={copy}
+          className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        >
+          {copied ? <Check className="h-3 w-3 text-gold" /> : <Copy className="h-3 w-3" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      )}
+      {text && (
+        <button
+          onClick={() => download("text/markdown", "md")}
+          className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        >
+          <Download className="h-3 w-3" /> .md
+        </button>
+      )}
+      {text && (
+        <button
+          onClick={() => download("text/plain", "txt")}
+          className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        >
+          <Download className="h-3 w-3" /> .txt
+        </button>
+      )}
+      <button
+        onClick={printPdf}
+        className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+      >
+        <Printer className="h-3 w-3" /> PDF
+      </button>
+      {imageUrl && (
+        <button
+          onClick={downloadImage}
+          className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        >
+          <ImageIcon className="h-3 w-3" /> PNG
+        </button>
+      )}
     </div>
   );
 }
