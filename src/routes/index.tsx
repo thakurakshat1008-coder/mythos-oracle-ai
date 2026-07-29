@@ -628,6 +628,18 @@ function MythosPage() {
                   }}
                 />
                 <button
+                  onClick={() => setMode(mode === "image" ? "chat" : "image")}
+                  aria-label={mode === "image" ? "Switch to chat mode" : "Switch to image mode"}
+                  title={mode === "image" ? "Chat mode" : "Image mode"}
+                  className={`hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
+                    mode === "image"
+                      ? "border-primary bg-primary/20 text-gold shadow-[var(--shadow-gold)]"
+                      : "border-border/60 bg-card/70 text-muted-foreground hover:border-primary/60 hover:text-gold"
+                  }`}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                </button>
+                <button
                   onClick={() => fileInputRef.current?.click()}
                   aria-label="Attach files"
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card/70 text-muted-foreground transition hover:border-primary/60 hover:text-gold"
