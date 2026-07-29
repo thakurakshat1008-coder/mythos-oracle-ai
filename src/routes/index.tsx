@@ -53,7 +53,7 @@ export const Route = createFileRoute("/")({
 type ModelOption = {
   id: string;
   label: string;
-  family: "GPT" | "Gemini" | "Claude" | "Manus";
+  family: "GPT" | "Gemini" | "Claude" | "Manus" | "Grok" | "Llama" | "DeepSeek" | "Mistral";
   hint: string;
   available: boolean;
 };
@@ -70,6 +70,10 @@ const MODELS: ModelOption[] = [
   { id: "google/gemini-3.1-flash-lite", label: "Gemini Flash Lite", family: "Gemini", hint: "Highest throughput", available: true },
   { id: "anthropic/claude-opus", label: "Claude Opus", family: "Claude", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
   { id: "anthropic/claude-sonnet", label: "Claude Sonnet", family: "Claude", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "xai/grok-4", label: "Grok 4", family: "Grok", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "meta/llama-3.3-70b", label: "Llama 3.3 70B", family: "Llama", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "deepseek/deepseek-r1", label: "DeepSeek R1", family: "DeepSeek", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "mistral/mistral-large", label: "Mistral Large", family: "Mistral", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
   { id: "manus/manus-agent", label: "Manus Agent", family: "Manus", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
 ];
 
