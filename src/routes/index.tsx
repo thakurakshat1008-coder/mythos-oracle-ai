@@ -678,7 +678,11 @@ function MythosPage() {
                       ? "Listening…"
                       : transcribing
                         ? "Transcribing…"
-                        : "Ask the oracle anything…"
+                        : generating
+                          ? "Painting your vision…"
+                          : mode === "image"
+                            ? "Describe an image to conjure…"
+                            : "Ask the oracle anything…"
                   }
                   className="composer-input min-h-[44px] max-h-40 flex-1 resize-none rounded-xl px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
@@ -693,20 +697,32 @@ function MythosPage() {
                 ) : (
                   <button
                     onClick={() => handleSend()}
-                    disabled={!input.trim() && files.length === 0}
+                    disabled={(!input.trim() && files.length === 0) || generating}
                     aria-label="Send"
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cosmic text-primary-foreground shadow-[var(--shadow-gold)] transition hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 animate-gradient"
                   >
-                    <Send className="h-4 w-4" />
+                    {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </button>
                 )}
               </div>
-              <div className="flex items-center justify-between px-3 pb-1 pt-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-                <span>
-                  Speaking as <span className="text-gold">{persona.label}</span> ·{" "}
-                  <span className="text-gold">{MODELS.find((m) => m.id === modelId)?.label}</span>
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 pb-1 pt-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+                <span className="min-w-0 truncate">
+                  {mode === "image" ? (
+                    <>Mode <span className="text-gold">Image ✨</span></>
+                  ) : (
+                    <>
+                      Speaking as <span className="text-gold">{persona.label}</span> ·{" "}
+                      <span className="text-gold">{MODELS.find((m) => m.id === modelId)?.label}</span>
+                    </>
+                  )}
                 </span>
-                <span className="hidden sm:inline">Enter to send · Shift+Enter for newline</span>
+                <button
+                  onClick={() => setMode(mode === "image" ? "chat" : "image")}
+                  className="sm:hidden rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-gold"
+                >
+                  {mode === "image" ? "Chat" : "Image"}
+                </button>
+                <span className="hidden md:inline">Enter to send · Shift+Enter for newline</span>
               </div>
             </div>
           </div>
