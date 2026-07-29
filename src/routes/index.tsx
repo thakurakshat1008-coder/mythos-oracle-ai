@@ -28,6 +28,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Lock,
+  Copy,
+  Download,
+  Printer,
+  ImagePlus,
+  Check,
 } from "lucide-react";
 import logo from "@/assets/mythos-logo.png";
 import { CosmicBackground } from "@/components/CosmicBackground";
