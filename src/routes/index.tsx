@@ -980,18 +980,152 @@ function MessageBubble({ message }: { message: UIMessage }) {
   }
 
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex items-start gap-2 sm:gap-3">
       <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary/40 bg-card/70 animate-pulse-glow">
         <Sparkles className="h-4 w-4 text-gold" />
       </div>
-      <div className="max-w-[85%] flex-1">
+      <div className="min-w-0 max-w-full flex-1 sm:max-w-[85%]">
         <div className="mb-1 font-display text-xs uppercase tracking-[0.25em] text-gold">
           Mythos
         </div>
+        {fileParts.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {fileParts.map((p, i) =>
+              p.mediaType?.startsWith("image/") ? (
+                <a
+                  key={i}
+                  href={p.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block overflow-hidden rounded-xl border border-border/60 shadow-[var(--shadow-oracle)]"
+                >
+                  <img
+                    src={p.url}
+                    alt={p.filename ?? "generated image"}
+                    className="max-h-96 w-auto max-w-full"
+                  />
+                </a>
+              ) : (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 rounded-lg bg-card/70 px-2 py-1 text-xs"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {p.filename ?? "file"}
+                </div>
+              ),
+            )}
+          </div>
+        )}
         <div className="mythos-prose text-sm leading-relaxed text-foreground/95">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
         </div>
+        <AssistantActions text={text} imageUrl={fileParts.find((p) => p.mediaType?.startsWith("image/"))?.url} />
       </div>
+    </div>
+  );
+}
+
+function AssistantActions({ text, imageUrl }: { text: string; imageUrl?: string }) {
+  const [copied, setCopied] = useState(false);
+  if (!text && !imageUrl) return null;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const download = (mime: string, ext: string) => {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mythos-${Date.now()}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadImage = async () => {
+    if (!imageUrl) return;
+    try {
+      const res = await fetch(imageUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mythos-image-${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const printPdf = () => {
+    const w = window.open("", "_blank", "width=800,height=1000");
+    if (!w) return;
+    const safe = text.replace(/</g, "&lt;");
+    w.document.write(`<!doctype html><html><head><title>Mythos response</title>
+      <style>
+        body{font-family:Georgia,serif;max-width:720px;margin:40px auto;padding:0 24px;color:#111;line-height:1.6}
+        h1{font-family:'Cinzel',serif;color:#8b6b1f;text-align:center}
+        pre{white-space:pre-wrap;word-wrap:break-word;background:#f5f2ea;padding:12px;border-radius:8px}
+        img{max-width:100%;border-radius:8px;margin:16px 0}
+      </style></head><body>
+      <h1>Mythos</h1>
+      ${imageUrl ? `<img src="${imageUrl}" alt="" />` : ""}
+      <pre>${safe}</pre>
+      <script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script>
+    </body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+      {text && (
+        <button
+          onClick={copy}
+          className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        >
+          {copied ? <Check className="h-3 w-3 text-gold" /> : <Copy className="h-3 w-3" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      )}
+      {text && (
+        <button
+          onClick={() => download("text/markdown", "md")}
+          className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        >
+          <Download className="h-3 w-3" /> .md
+        </button>
+      )}
+      {text && (
+        <button
+          onClick={() => download("text/plain", "txt")}
+          className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        >
+          <Download className="h-3 w-3" /> .txt
+        </button>
+      )}
+      <button
+        onClick={printPdf}
+        className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+      >
+        <Printer className="h-3 w-3" /> PDF
+      </button>
+      {imageUrl && (
+        <button
+          onClick={downloadImage}
+          className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        >
+          <ImageIcon className="h-3 w-3" /> PNG
+        </button>
+      )}
     </div>
   );
 }
