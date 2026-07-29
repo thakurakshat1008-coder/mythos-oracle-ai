@@ -860,16 +860,16 @@ function Landing({
   onPick: (t: string) => void;
 }) {
   return (
-    <section className="flex flex-col items-center gap-10 py-8 text-center">
+    <section className="flex flex-col items-center gap-8 py-6 text-center sm:gap-10 sm:py-8">
       <div className="flex flex-col items-center gap-4">
         <img
           src={logo}
           alt="Mythos"
           width={112}
           height={112}
-          className="h-28 w-28 animate-float-slow drop-shadow-[0_0_40px_oklch(0.78_0.17_75_/_0.55)]"
+          className="h-20 w-20 animate-float-slow drop-shadow-[0_0_40px_oklch(0.78_0.17_75_/_0.55)] sm:h-28 sm:w-28"
         />
-        <h2 className="font-display text-5xl font-semibold leading-tight tracking-wide sm:text-6xl">
+        <h2 className="font-display text-4xl font-semibold leading-tight tracking-wide sm:text-6xl">
           <span className="text-gradient-gold">Mythos</span>
         </h2>
         <p className="max-w-xl text-balance text-base text-muted-foreground sm:text-lg">
