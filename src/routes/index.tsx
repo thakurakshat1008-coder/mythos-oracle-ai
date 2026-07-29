@@ -274,7 +274,50 @@ function MythosPage() {
     textareaRef.current?.focus();
   }, [activeId]);
 
+  const handleGenerateImage = async (text?: string) => {
+    const value = (text ?? input).trim();
+    if (!value || generating) return;
+    setInput("");
+    // Append user prompt as a message
+    const userMsg: UIMessage = {
+      id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+      role: "user",
+      parts: [{ type: "text", text: `🎨 ${value}` }],
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: value }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { url } = (await res.json()) as { url: string };
+      const assistantMsg: UIMessage = {
+        id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+        role: "assistant",
+        parts: [
+          { type: "file", url, mediaType: "image/png", filename: "mythos-image.png" } as never,
+          { type: "text", text: `*Generated image for:* "${value}"` },
+        ],
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+    } catch (e) {
+      console.error(e);
+      const errMsg: UIMessage = {
+        id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+        role: "assistant",
+        parts: [{ type: "text", text: "The vision faltered. Please try again." }],
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleSend = (text?: string) => {
+    if (mode === "image") return handleGenerateImage(text);
     const value = (text ?? input).trim();
     if ((!value && files.length === 0) || isLoading) return;
     const dt = new DataTransfer();
