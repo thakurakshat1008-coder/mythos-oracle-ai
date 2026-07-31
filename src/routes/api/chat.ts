@@ -41,7 +41,11 @@ export const Route = createFileRoute("/api/chat")({
         const messages = await convertToModelMessages(body.messages as UIMessage[]);
 
         // Route: OpenRouter for Claude/Manus/Grok/Llama/DeepSeek/Mistral, Lovable AI Gateway otherwise.
-        const useOpenRouter = Boolean(OPENROUTER_MODELS[requested]) && Boolean(orKey);
+        // Route: OpenRouter for Claude/Manus/Grok/Llama/DeepSeek/Mistral, Lovable AI Gateway otherwise.
+        // A malformed key would fail mid-stream, so fall back to the gateway up front.
+        const useOpenRouter =
+          Boolean(OPENROUTER_MODELS[requested]) && Boolean(orKey?.startsWith("sk-or-"));
+
 
         const runGateway = (modelId: string) => {
           const gateway = createLovableAiGatewayProvider(key);
