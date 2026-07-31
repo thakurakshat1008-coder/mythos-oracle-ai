@@ -607,8 +607,14 @@ function MythosPage() {
           ) : (
             <div ref={scrollRef} className="flex flex-col gap-6 pt-4">
               {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  modelLabel={MODELS.find((x) => x.id === modelId)?.label}
+                  personaLabel={persona.label}
+                />
               ))}
+
               {status === "submitted" && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
