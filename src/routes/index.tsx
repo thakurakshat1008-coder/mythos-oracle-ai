@@ -254,15 +254,25 @@ function MythosPage() {
     [modelId, persona],
   );
 
+  const [chatError, setChatError] = useState<string | null>(null);
+
   const { messages, sendMessage, status, stop, setMessages } = useChat({
     id: activeId,
     messages: activeThread?.messages ?? [],
     transport,
-    onError: (e) => console.error(e),
+    onError: (e) => {
+      console.error(e);
+      setChatError(e.message || "The oracle could not answer with this model.");
+    },
   });
 
   const isLoading = status === "submitted" || status === "streaming";
   const hasMessages = messages.length > 0;
+
+  useEffect(() => {
+    if (status === "submitted") setChatError(null);
+  }, [status]);
+
 
   // Sync messages back to the active thread
   useEffect(() => {
@@ -607,8 +617,21 @@ function MythosPage() {
           ) : (
             <div ref={scrollRef} className="flex flex-col gap-6 pt-4">
               {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  modelLabel={MODELS.find((x) => x.id === modelId)?.label}
+                  personaLabel={persona.label}
+                />
               ))}
+              {chatError && (
+                <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
+                  {chatError}
+                </div>
+              )}
+
+
+
               {status === "submitted" && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -956,7 +979,16 @@ function Landing({
   );
 }
 
-function MessageBubble({ message }: { message: UIMessage }) {
+function MessageBubble({
+  message,
+  modelLabel,
+  personaLabel,
+}: {
+  message: UIMessage;
+  modelLabel?: string;
+  personaLabel?: string;
+}) {
+
   const isUser = message.role === "user";
   const text = message.parts
     .map((p) => (p.type === "text" ? p.text : ""))
@@ -1039,15 +1071,33 @@ function MessageBubble({ message }: { message: UIMessage }) {
         <div className="mythos-prose text-sm leading-relaxed text-foreground/95">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
         </div>
-        <AssistantActions text={text} imageUrl={fileParts.find((p) => p.mediaType?.startsWith("image/"))?.url} />
+        <AssistantActions
+          text={text}
+          imageUrl={fileParts.find((p) => p.mediaType?.startsWith("image/"))?.url}
+          modelLabel={modelLabel}
+          personaLabel={personaLabel}
+        />
+
       </div>
     </div>
   );
 }
 
-function AssistantActions({ text, imageUrl }: { text: string; imageUrl?: string }) {
+function AssistantActions({
+  text,
+  imageUrl,
+  modelLabel,
+  personaLabel,
+}: {
+  text: string;
+  imageUrl?: string;
+  modelLabel?: string;
+  personaLabel?: string;
+}) {
   const [copied, setCopied] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   if (!text && !imageUrl) return null;
+
 
   const copy = async () => {
     try {
@@ -1085,24 +1135,19 @@ function AssistantActions({ text, imageUrl }: { text: string; imageUrl?: string 
     }
   };
 
-  const printPdf = () => {
-    const w = window.open("", "_blank", "width=800,height=1000");
-    if (!w) return;
-    const safe = text.replace(/</g, "&lt;");
-    w.document.write(`<!doctype html><html><head><title>Mythos response</title>
-      <style>
-        body{font-family:Georgia,serif;max-width:720px;margin:40px auto;padding:0 24px;color:#111;line-height:1.6}
-        h1{font-family:'Cinzel',serif;color:#8b6b1f;text-align:center}
-        pre{white-space:pre-wrap;word-wrap:break-word;background:#f5f2ea;padding:12px;border-radius:8px}
-        img{max-width:100%;border-radius:8px;margin:16px 0}
-      </style></head><body>
-      <h1>Mythos</h1>
-      ${imageUrl ? `<img src="${imageUrl}" alt="" />` : ""}
-      <pre>${safe}</pre>
-      <script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script>
-    </body></html>`);
-    w.document.close();
+  const savePdf = async () => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      const { exportAnswerToPdf } = await import("@/lib/pdf-export");
+      await exportAnswerToPdf({ text, imageUrl, model: modelLabel, persona: personaLabel });
+    } catch (e) {
+      console.error("pdf export failed", e);
+    } finally {
+      setPdfBusy(false);
+    }
   };
+
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -1132,11 +1177,14 @@ function AssistantActions({ text, imageUrl }: { text: string; imageUrl?: string 
         </button>
       )}
       <button
-        onClick={printPdf}
-        className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        onClick={savePdf}
+        disabled={pdfBusy}
+        className="flex items-center gap-1 rounded-md border border-gold/40 bg-gold/10 px-2 py-1 text-gold transition hover:border-gold hover:bg-gold/20 disabled:opacity-60"
       >
-        <Printer className="h-3 w-3" /> PDF
+        {pdfBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Printer className="h-3 w-3" />}
+        {pdfBusy ? "Building PDF…" : "Download PDF"}
       </button>
+
       {imageUrl && (
         <button
           onClick={downloadImage}
