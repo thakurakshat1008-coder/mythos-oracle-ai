@@ -40,50 +40,48 @@ export const Route = createFileRoute("/api/chat")({
 
         const messages = await convertToModelMessages(body.messages as UIMessage[]);
 
-        // Route: OpenRouter for Claude/Manus/Grok/Llama/DeepSeek/Mistral, Lovable AI Gateway otherwise.
+        // Strict routing: the selected model is the model that answers. No silent substitution.
+        const isOpenRouterModel = Boolean(OPENROUTER_MODELS[requested]);
+        const isGatewayModel = GATEWAY_MODELS.has(requested);
 
-        // A malformed key would fail mid-stream, so fall back to the gateway up front.
-        const useOpenRouter =
-          Boolean(OPENROUTER_MODELS[requested]) && Boolean(orKey?.startsWith("sk-or-"));
+        if (!isOpenRouterModel && !isGatewayModel) {
+          return new Response(`Unknown model "${requested}".`, { status: 400 });
+        }
 
+        try {
+          if (isOpenRouterModel) {
+            if (!orKey?.startsWith("sk-or-")) {
+              return new Response(
+                `${requested} needs a valid OpenRouter key (OPENROUTER_API_KEY starting with "sk-or-"). Add one, or pick a GPT/Gemini model.`,
+                { status: 503 },
+              );
+            }
+            const openrouter = createOpenRouterProvider(orKey);
+            const result = streamText({
+              model: openrouter(OPENROUTER_MODELS[requested]),
+              system,
+              messages,
+            });
+            return result.toUIMessageStreamResponse({
+              originalMessages: body.messages as UIMessage[],
+            });
+          }
 
-        const runGateway = (modelId: string) => {
           const gateway = createLovableAiGatewayProvider(key);
-          return streamText({
-            model: gateway(modelId),
+          const result = streamText({
+            model: gateway(requested),
             system,
             messages,
             providerOptions: { lovable: { reasoningEffort: "none" } },
           });
-        };
-
-        try {
-          if (useOpenRouter) {
-            const openrouter = createOpenRouterProvider(orKey!);
-            try {
-              const result = streamText({
-                model: openrouter(OPENROUTER_MODELS[requested]),
-                system,
-                messages,
-              });
-              return result.toUIMessageStreamResponse({
-                originalMessages: body.messages as UIMessage[],
-              });
-            } catch (err) {
-              // Fallback to the gateway default if OpenRouter rejects the model/key.
-              console.error("openrouter error, falling back", err);
-            }
-          }
-
-          const modelId = GATEWAY_MODELS.has(requested) ? requested : DEFAULT_MODEL;
-          const result = runGateway(modelId);
           return result.toUIMessageStreamResponse({
             originalMessages: body.messages as UIMessage[],
           });
         } catch (err) {
           console.error("chat error", err);
-          return new Response("AI gateway error", { status: 500 });
+          return new Response(`${requested} failed to respond.`, { status: 502 });
         }
+
       },
     },
   },
