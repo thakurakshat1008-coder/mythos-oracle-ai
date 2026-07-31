@@ -73,13 +73,15 @@ const MODELS: ModelOption[] = [
   { id: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", family: "Gemini", hint: "Multimodal power", available: true },
   { id: "google/gemini-3.6-flash", label: "Gemini 3.6 Flash", family: "Gemini", hint: "Fast multimodal", available: true },
   { id: "google/gemini-3.1-flash-lite", label: "Gemini Flash Lite", family: "Gemini", hint: "Highest throughput", available: true },
-  { id: "anthropic/claude-opus", label: "Claude Opus", family: "Claude", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
-  { id: "anthropic/claude-sonnet", label: "Claude Sonnet", family: "Claude", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
-  { id: "xai/grok-4", label: "Grok 4", family: "Grok", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
-  { id: "meta/llama-3.3-70b", label: "Llama 3.3 70B", family: "Llama", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
-  { id: "deepseek/deepseek-r1", label: "DeepSeek R1", family: "DeepSeek", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
-  { id: "mistral/mistral-large", label: "Mistral Large", family: "Mistral", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
-  { id: "manus/manus-agent", label: "Manus Agent", family: "Manus", hint: "Coming soon — falls back to GPT-5.6 Sol", available: false },
+  { id: "anthropic/claude-opus-4.1", label: "Claude Opus 4.1", family: "Claude", hint: "Deepest reasoning — via OpenRouter", available: true },
+  { id: "anthropic/claude-sonnet-4.5", label: "Claude Sonnet 4.5", family: "Claude", hint: "Best coding balance — via OpenRouter", available: true },
+  { id: "anthropic/claude-3.7-sonnet", label: "Claude 3.7 Sonnet", family: "Claude", hint: "Reliable all-rounder — via OpenRouter", available: true },
+  { id: "x-ai/grok-4", label: "Grok 4", family: "Grok", hint: "Realtime wit — via OpenRouter", available: true },
+  { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B", family: "Llama", hint: "Open weights — via OpenRouter", available: true },
+  { id: "deepseek/deepseek-r1", label: "DeepSeek R1", family: "DeepSeek", hint: "Chain-of-thought — via OpenRouter", available: true },
+  { id: "mistralai/mistral-large", label: "Mistral Large", family: "Mistral", hint: "European frontier — via OpenRouter", available: true },
+  { id: "manus/manus-agent", label: "Manus Agent", family: "Manus", hint: "Agentic mode (Claude Sonnet backend)", available: true },
+
 ];
 
 type Persona = {

@@ -1,17 +1,27 @@
 import { useMemo } from "react";
 
+// Deterministic PRNG so SSR and client render identical star fields (no hydration mismatch).
+function seeded(seed: number) {
+  let t = seed + 0x6d2b79f5;
+  return () => {
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export function CosmicBackground() {
-  const stars = useMemo(
-    () =>
-      Array.from({ length: 60 }, (_, i) => ({
-        id: i,
-        top: Math.random() * 100,
-        left: Math.random() * 100,
-        size: Math.random() * 2 + 1,
-        delay: Math.random() * 3,
-      })),
-    [],
-  );
+  const stars = useMemo(() => {
+    const rand = seeded(20260731);
+    return Array.from({ length: 60 }, (_, i) => ({
+      id: i,
+      top: +(rand() * 100).toFixed(3),
+      left: +(rand() * 100).toFixed(3),
+      size: +(rand() * 2 + 1).toFixed(3),
+      delay: +(rand() * 3).toFixed(3),
+    }));
+  }, []);
+
 
   return (
     <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-background">
