@@ -29,7 +29,7 @@ export const Route = createFileRoute("/api/chat")({
         }
         const key = process.env.LOVABLE_API_KEY;
         if (!key) return new Response("Missing LOVABLE_API_KEY", { status: 500 });
-        const orKey = process.env.OPENROUTER_API_KEY;
+        const orKey = process.env.OPENROUTER_API_KEY?.trim();
 
         const requested = typeof body.model === "string" ? body.model : DEFAULT_MODEL;
 
