@@ -1066,9 +1066,21 @@ function MessageBubble({
   );
 }
 
-function AssistantActions({ text, imageUrl }: { text: string; imageUrl?: string }) {
+function AssistantActions({
+  text,
+  imageUrl,
+  modelLabel,
+  personaLabel,
+}: {
+  text: string;
+  imageUrl?: string;
+  modelLabel?: string;
+  personaLabel?: string;
+}) {
   const [copied, setCopied] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   if (!text && !imageUrl) return null;
+
 
   const copy = async () => {
     try {
