@@ -171,11 +171,7 @@ function newThread(): Thread {
   };
 }
 
-function loadThreads(): { threads: Thread[]; activeId: string } {
-  if (typeof window === "undefined") {
-    const t = newThread();
-    return { threads: [t], activeId: t.id };
-  }
+function loadThreads(): { threads: Thread[]; activeId: string } | null {
   try {
     const raw = window.localStorage.getItem(THREADS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Thread[]) : [];
@@ -187,8 +183,7 @@ function loadThreads(): { threads: Thread[]; activeId: string } {
   } catch {
     /* ignore */
   }
-  const t = newThread();
-  return { threads: [t], activeId: t.id };
+  return null;
 }
 
 function MythosPage() {
@@ -208,23 +203,45 @@ function MythosPage() {
   const chunksRef = useRef<Blob[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const initial = useMemo(() => loadThreads(), []);
+  // SSR and first client render must match: start with one empty placeholder thread,
+  // then hydrate saved history from localStorage after mount.
+  const initial = useMemo(() => {
+    const t: Thread = { id: "placeholder", title: "New conversation", messages: [], updatedAt: 0 };
+    return { threads: [t], activeId: t.id };
+  }, []);
   const [threads, setThreads] = useState<Thread[]>(initial.threads);
   const [activeId, setActiveId] = useState<string>(initial.activeId);
+  const [hydrated, setHydrated] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  useEffect(() => {
+    const stored = loadThreads();
+    if (stored) {
+      setThreads(stored.threads);
+      setActiveId(stored.activeId);
+    } else {
+      const t = newThread();
+      setThreads([t]);
+      setActiveId(t.id);
+    }
+    setHydrated(true);
+  }, []);
 
   const activeThread = threads.find((t) => t.id === activeId) ?? threads[0];
 
   // Persist
   useEffect(() => {
+    if (!hydrated) return;
     try {
       window.localStorage.setItem(THREADS_KEY, JSON.stringify(threads));
     } catch { /* ignore */ }
-  }, [threads]);
+  }, [threads, hydrated]);
   useEffect(() => {
+    if (!hydrated) return;
     try { window.localStorage.setItem(ACTIVE_KEY, activeId); } catch { /* ignore */ }
-  }, [activeId]);
+  }, [activeId, hydrated]);
+
 
   const transport = useMemo(
     () =>
