@@ -1054,7 +1054,13 @@ function MessageBubble({
         <div className="mythos-prose text-sm leading-relaxed text-foreground/95">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
         </div>
-        <AssistantActions text={text} imageUrl={fileParts.find((p) => p.mediaType?.startsWith("image/"))?.url} />
+        <AssistantActions
+          text={text}
+          imageUrl={fileParts.find((p) => p.mediaType?.startsWith("image/"))?.url}
+          modelLabel={modelLabel}
+          personaLabel={personaLabel}
+        />
+
       </div>
     </div>
   );
