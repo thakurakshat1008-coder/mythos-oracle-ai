@@ -624,6 +624,13 @@ function MythosPage() {
                   personaLabel={persona.label}
                 />
               ))}
+              {chatError && (
+                <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">
+                  {chatError}
+                </div>
+              )}
+
+
 
               {status === "submitted" && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
