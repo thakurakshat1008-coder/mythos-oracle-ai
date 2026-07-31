@@ -1118,24 +1118,19 @@ function AssistantActions({
     }
   };
 
-  const printPdf = () => {
-    const w = window.open("", "_blank", "width=800,height=1000");
-    if (!w) return;
-    const safe = text.replace(/</g, "&lt;");
-    w.document.write(`<!doctype html><html><head><title>Mythos response</title>
-      <style>
-        body{font-family:Georgia,serif;max-width:720px;margin:40px auto;padding:0 24px;color:#111;line-height:1.6}
-        h1{font-family:'Cinzel',serif;color:#8b6b1f;text-align:center}
-        pre{white-space:pre-wrap;word-wrap:break-word;background:#f5f2ea;padding:12px;border-radius:8px}
-        img{max-width:100%;border-radius:8px;margin:16px 0}
-      </style></head><body>
-      <h1>Mythos</h1>
-      ${imageUrl ? `<img src="${imageUrl}" alt="" />` : ""}
-      <pre>${safe}</pre>
-      <script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script>
-    </body></html>`);
-    w.document.close();
+  const savePdf = async () => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      const { exportAnswerToPdf } = await import("@/lib/pdf-export");
+      await exportAnswerToPdf({ text, imageUrl, model: modelLabel, persona: personaLabel });
+    } catch (e) {
+      console.error("pdf export failed", e);
+    } finally {
+      setPdfBusy(false);
+    }
   };
+
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
