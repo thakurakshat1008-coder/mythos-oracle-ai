@@ -254,15 +254,25 @@ function MythosPage() {
     [modelId, persona],
   );
 
+  const [chatError, setChatError] = useState<string | null>(null);
+
   const { messages, sendMessage, status, stop, setMessages } = useChat({
     id: activeId,
     messages: activeThread?.messages ?? [],
     transport,
-    onError: (e) => console.error(e),
+    onError: (e) => {
+      console.error(e);
+      setChatError(e.message || "The oracle could not answer with this model.");
+    },
   });
 
   const isLoading = status === "submitted" || status === "streaming";
   const hasMessages = messages.length > 0;
+
+  useEffect(() => {
+    if (status === "submitted") setChatError(null);
+  }, [status]);
+
 
   // Sync messages back to the active thread
   useEffect(() => {
