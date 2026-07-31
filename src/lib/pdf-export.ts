@@ -1,10 +1,9 @@
-import { marked } from "marked";
+import { marked, type Tokens } from "marked";
 
 /**
  * High-quality client-side PDF export.
- * Renders the answer's markdown into a clean, print-styled A4 sheet (plain hex colors so
- * html2canvas never chokes on modern CSS color functions), rasterises it and paginates
- * it into a real downloadable .pdf file.
+ * Renders the answer as a real vector PDF with selectable text, proper pagination,
+ * styled headings, lists, code blocks, quotes and tables — plus any generated image.
  */
 export async function exportAnswerToPdf(options: {
   text: string;
@@ -13,128 +12,238 @@ export async function exportAnswerToPdf(options: {
   persona?: string;
 }) {
   const { text, imageUrl, model, persona } = options;
+  const { default: jsPDF } = await import("jspdf");
 
-  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-    import("jspdf"),
-    import("html2canvas"),
-  ]);
+  const doc = new jsPDF({ unit: "pt", format: "a4", compress: true });
+  const PW = doc.internal.pageSize.getWidth();
+  const PH = doc.internal.pageSize.getHeight();
+  const M = 56;
+  const W = PW - M * 2;
 
-  const html = await marked.parse(text || "", { gfm: true, breaks: true });
+  const GOLD: [number, number, number] = [201, 162, 39];
+  const PURPLE: [number, number, number] = [75, 46, 131];
+  const INK: [number, number, number] = [28, 24, 40];
+  const MUTED: [number, number, number] = [122, 116, 138];
 
-  const PAGE_W = 794; // A4 @ 96dpi
-  const PADDING = 56;
+  let y = M;
+  let page = 1;
 
-  const host = document.createElement("div");
-  host.setAttribute("style", "position:fixed;left:-10000px;top:0;z-index:-1;");
-  host.innerHTML = `
-    <div id="mythos-pdf-sheet" style="width:${PAGE_W}px;background:#ffffff;color:#16121f;padding:${PADDING}px;box-sizing:border-box;font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:1.7;">
-      <div style="border-bottom:2px solid #c9a227;padding-bottom:14px;margin-bottom:26px;display:flex;align-items:baseline;justify-content:space-between;">
-        <div style="font-family:Georgia,serif;font-size:26px;letter-spacing:4px;color:#4b2e83;font-weight:700;">MYTHOS</div>
-        <div style="font-size:11px;color:#6b6478;text-align:right;font-family:Helvetica,Arial,sans-serif;">
-          ${escapeHtml(model ?? "")}${persona ? ` · ${escapeHtml(persona)}` : ""}<br/>
-          ${new Date().toLocaleString()}
-        </div>
-      </div>
-      ${imageUrl ? `<img src="${escapeAttr(imageUrl)}" style="max-width:100%;border-radius:10px;margin:0 0 22px;display:block;" crossorigin="anonymous" />` : ""}
-      <div class="body">${html}</div>
-      <div style="margin-top:34px;border-top:1px solid #e2ddd0;padding-top:10px;font-size:10px;color:#8a8395;font-family:Helvetica,Arial,sans-serif;">
-        Generated with Mythos — the oracle of all AI minds
-      </div>
-    </div>`;
-  document.body.appendChild(host);
+  const footer = () => {
+    doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(...MUTED);
+    doc.text("Mythos — the oracle of all AI minds", M, PH - 26);
+    doc.text(String(page), PW - M, PH - 26, { align: "right" });
+  };
 
-  const sheet = host.querySelector<HTMLElement>("#mythos-pdf-sheet")!;
-  styleBody(sheet);
+  const newPage = () => {
+    footer();
+    doc.addPage();
+    page += 1;
+    y = M;
+  };
 
-  // Wait for images (generated art) so they land in the raster.
-  await Promise.all(
-    Array.from(sheet.querySelectorAll("img")).map(
-      (img) =>
-        new Promise<void>((resolve) => {
-          if (img.complete) return resolve();
-          img.onload = () => resolve();
-          img.onerror = () => resolve();
-        }),
-    ),
-  );
+  const need = (h: number) => {
+    if (y + h > PH - M) newPage();
+  };
 
-  try {
-    const canvas = await html2canvas(sheet, {
-      scale: 2,
-      backgroundColor: "#ffffff",
-      useCORS: true,
-      logging: false,
-    });
-
-    const pdf = new jsPDF({ unit: "pt", format: "a4", compress: true });
-    const pw = pdf.internal.pageSize.getWidth();
-    const ph = pdf.internal.pageSize.getHeight();
-    const pxPerPt = canvas.width / pw;
-    const slicePx = Math.floor(ph * pxPerPt);
-
-    let offset = 0;
-    let page = 0;
-    while (offset < canvas.height) {
-      const h = Math.min(slicePx, canvas.height - offset);
-      const slice = document.createElement("canvas");
-      slice.width = canvas.width;
-      slice.height = h;
-      const ctx = slice.getContext("2d")!;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, slice.width, slice.height);
-      ctx.drawImage(canvas, 0, offset, canvas.width, h, 0, 0, canvas.width, h);
-      if (page > 0) pdf.addPage();
-      pdf.addImage(slice.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, pw, h / pxPerPt);
-      offset += h;
-      page += 1;
+  const para = (
+    txt: string,
+    opts: {
+      size?: number;
+      style?: "normal" | "bold" | "italic";
+      font?: "times" | "helvetica" | "courier";
+      color?: [number, number, number];
+      indent?: number;
+      lead?: number;
+      gap?: number;
+    } = {},
+  ) => {
+    const size = opts.size ?? 11.5;
+    const lead = opts.lead ?? size * 1.5;
+    const indent = opts.indent ?? 0;
+    doc
+      .setFont(opts.font ?? "times", opts.style ?? "normal")
+      .setFontSize(size)
+      .setTextColor(...(opts.color ?? INK));
+    const lines = doc.splitTextToSize(txt, W - indent) as string[];
+    for (const line of lines) {
+      need(lead);
+      doc.text(line, M + indent, y + size);
+      y += lead;
     }
+    y += opts.gap ?? 6;
+  };
 
-    pdf.save(`mythos-${Date.now()}.pdf`);
-  } finally {
-    host.remove();
+  // ---------- header ----------
+  doc.setFont("times", "bold").setFontSize(24).setTextColor(...PURPLE);
+  doc.text("MYTHOS", M, y + 18);
+  doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(...MUTED);
+  const meta = [model, persona].filter(Boolean).join("  ·  ");
+  if (meta) doc.text(meta, PW - M, y + 8, { align: "right" });
+  doc.text(new Date().toLocaleString(), PW - M, y + 20, { align: "right" });
+  y += 30;
+  doc.setDrawColor(...GOLD).setLineWidth(1.5);
+  doc.line(M, y, PW - M, y);
+  y += 22;
+
+  // ---------- generated image ----------
+  if (imageUrl) {
+    try {
+      const { dataUrl, w, h } = await loadImage(imageUrl);
+      const drawW = Math.min(W, w);
+      const drawH = (h / w) * drawW;
+      need(drawH + 12);
+      doc.addImage(dataUrl, "PNG", M, y, drawW, drawH, undefined, "FAST");
+      y += drawH + 18;
+    } catch {
+      /* image unavailable — keep the text export */
+    }
+  }
+
+  // ---------- body ----------
+  const tokens = marked.lexer(text || "", { gfm: true });
+  renderTokens(tokens);
+  footer();
+  doc.save(`mythos-${Date.now()}.pdf`);
+
+  function inline(t: string) {
+    return t
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/(^|\W)\*(?!\s)(.+?)\*/g, "$1$2")
+      .replace(/`(.+?)`/g, "$1")
+      .replace(/\[(.+?)\]\((.+?)\)/g, "$1 ($2)")
+      .replace(/&nbsp;/g, " ");
+  }
+
+  function renderTokens(list: Tokens.Generic[], indent = 0) {
+    for (const tk of list) {
+      switch (tk.type) {
+        case "heading": {
+          const lvl = (tk as Tokens.Heading).depth;
+          const size = lvl === 1 ? 18 : lvl === 2 ? 15 : 13;
+          y += 6;
+          para(inline((tk as Tokens.Heading).text), {
+            size,
+            style: "bold",
+            color: lvl <= 2 ? PURPLE : INK,
+            indent,
+            gap: 4,
+          });
+          break;
+        }
+        case "paragraph":
+          para(inline((tk as Tokens.Paragraph).text), { indent });
+          break;
+        case "text":
+          para(inline((tk as Tokens.Text).text), { indent });
+          break;
+        case "blockquote": {
+          const start = y;
+          const inner = (tk as Tokens.Blockquote).tokens ?? [];
+          renderTokens(inner as Tokens.Generic[], indent + 16);
+          doc.setDrawColor(...GOLD).setLineWidth(2.5);
+          doc.line(M + indent + 4, start, M + indent + 4, Math.min(y, PH - M));
+          break;
+        }
+        case "list": {
+          const l = tk as Tokens.List;
+          let n = typeof l.start === "number" && l.start ? l.start : 1;
+          for (const item of l.items) {
+            const bullet = l.ordered ? `${n++}.` : "•";
+            doc.setFont("times", "bold").setFontSize(11.5).setTextColor(...GOLD);
+            need(17);
+            doc.text(bullet, M + indent, y + 11.5);
+            const before = y;
+            renderTokens((item.tokens ?? []) as Tokens.Generic[], indent + 20);
+            if (y === before) y += 17;
+            y -= 2;
+          }
+          y += 6;
+          break;
+        }
+        case "code": {
+          const code = (tk as Tokens.Code).text;
+          doc.setFont("courier", "normal").setFontSize(9.5);
+          const lines = code
+            .split("\n")
+            .flatMap((l) => doc.splitTextToSize(l, W - indent - 20) as string[]);
+          const lead = 13;
+          let i = 0;
+          while (i < lines.length) {
+            const room = Math.max(1, Math.floor((PH - M - y - 16) / lead));
+            const chunk = lines.slice(i, i + room);
+            const boxH = chunk.length * lead + 16;
+            need(Math.min(boxH, PH - M - y));
+            doc.setFillColor(28, 23, 48);
+            doc.roundedRect(M + indent, y, W - indent, boxH, 5, 5, "F");
+            doc.setFont("courier", "normal").setFontSize(9.5).setTextColor(238, 234, 255);
+            chunk.forEach((ln, k) => doc.text(ln, M + indent + 10, y + 16 + k * lead));
+            y += boxH + 10;
+            i += chunk.length;
+            if (i < lines.length) newPage();
+          }
+          doc.setTextColor(...INK);
+          break;
+        }
+        case "table": {
+          const t = tk as Tokens.Table;
+          const cols = t.header.length;
+          const colW = (W - indent) / cols;
+          const rowH = 20;
+          const drawRow = (cells: string[], head: boolean) => {
+            need(rowH);
+            if (head) {
+              doc.setFillColor(245, 241, 230);
+              doc.rect(M + indent, y, W - indent, rowH, "F");
+            }
+            doc
+              .setFont("times", head ? "bold" : "normal")
+              .setFontSize(10)
+              .setTextColor(...INK);
+            doc.setDrawColor(220, 214, 200).setLineWidth(0.5);
+            cells.forEach((c, i2) => {
+              doc.rect(M + indent + i2 * colW, y, colW, rowH);
+              const txt = (doc.splitTextToSize(inline(c), colW - 10) as string[])[0] ?? "";
+              doc.text(txt, M + indent + i2 * colW + 5, y + 13.5);
+            });
+            y += rowH;
+          };
+          drawRow(t.header.map((h) => h.text), true);
+          t.rows.forEach((r) => drawRow(r.map((c) => c.text), false));
+          y += 12;
+          break;
+        }
+        case "hr":
+          need(16);
+          doc.setDrawColor(226, 221, 208).setLineWidth(0.8);
+          doc.line(M + indent, y + 6, PW - M, y + 6);
+          y += 18;
+          break;
+        case "space":
+          y += 4;
+          break;
+        default: {
+          const raw = (tk as { text?: string }).text;
+          if (raw) para(inline(raw), { indent });
+        }
+      }
+    }
   }
 }
 
-function styleBody(root: HTMLElement) {
-  const set = (sel: string, css: string) =>
-    root.querySelectorAll<HTMLElement>(sel).forEach((el) => el.setAttribute("style", css));
-
-  set("h1", "font-size:24px;color:#4b2e83;margin:26px 0 12px;font-weight:700;");
-  set("h2", "font-size:20px;color:#4b2e83;margin:22px 0 10px;font-weight:700;");
-  set("h3", "font-size:17px;color:#6b4bb3;margin:18px 0 8px;font-weight:700;");
-  set("p", "margin:0 0 13px;");
-  set("ul,ol", "margin:0 0 13px;padding-left:24px;");
-  set("li", "margin:0 0 6px;");
-  set("strong", "color:#2a2036;font-weight:700;");
-  set("a", "color:#6b4bb3;text-decoration:underline;");
-  set(
-    "blockquote",
-    "margin:0 0 14px;padding:8px 16px;border-left:3px solid #c9a227;background:#faf7ef;color:#3d3550;font-style:italic;",
-  );
-  set(
-    "pre",
-    "background:#1c1730;color:#f2ecff;padding:14px;border-radius:8px;overflow:hidden;white-space:pre-wrap;word-break:break-word;font-family:'Courier New',monospace;font-size:12.5px;line-height:1.55;margin:0 0 16px;",
-  );
-  root.querySelectorAll<HTMLElement>("pre code").forEach((el) =>
-    el.setAttribute("style", "background:transparent;color:inherit;padding:0;font-size:12.5px;"),
-  );
-  root.querySelectorAll<HTMLElement>("code").forEach((el) => {
-    if (el.parentElement?.tagName === "PRE") return;
-    el.setAttribute(
-      "style",
-      "background:#f1ecff;color:#4b2e83;padding:1px 5px;border-radius:4px;font-family:'Courier New',monospace;font-size:13px;",
-    );
+async function loadImage(url: string) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result as string);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
   });
-  set("table", "width:100%;border-collapse:collapse;margin:0 0 16px;font-size:13.5px;");
-  set("th", "border:1px solid #ddd6c6;background:#f7f3e8;padding:7px 9px;text-align:left;font-weight:700;");
-  set("td", "border:1px solid #ddd6c6;padding:7px 9px;vertical-align:top;");
-  set("hr", "border:none;border-top:1px solid #e2ddd0;margin:20px 0;");
-  set("img", "max-width:100%;border-radius:8px;margin:0 0 14px;display:block;");
-}
-
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-}
-function escapeAttr(s: string) {
-  return s.replace(/"/g, "&quot;");
+  const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+  return { dataUrl, ...dims };
 }
