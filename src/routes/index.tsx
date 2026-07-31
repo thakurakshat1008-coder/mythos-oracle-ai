@@ -1160,11 +1160,14 @@ function AssistantActions({
         </button>
       )}
       <button
-        onClick={printPdf}
-        className="flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-1 transition hover:border-primary/50 hover:text-foreground"
+        onClick={savePdf}
+        disabled={pdfBusy}
+        className="flex items-center gap-1 rounded-md border border-gold/40 bg-gold/10 px-2 py-1 text-gold transition hover:border-gold hover:bg-gold/20 disabled:opacity-60"
       >
-        <Printer className="h-3 w-3" /> PDF
+        {pdfBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Printer className="h-3 w-3" />}
+        {pdfBusy ? "Building PDF…" : "Download PDF"}
       </button>
+
       {imageUrl && (
         <button
           onClick={downloadImage}
