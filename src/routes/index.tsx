@@ -962,7 +962,16 @@ function Landing({
   );
 }
 
-function MessageBubble({ message }: { message: UIMessage }) {
+function MessageBubble({
+  message,
+  modelLabel,
+  personaLabel,
+}: {
+  message: UIMessage;
+  modelLabel?: string;
+  personaLabel?: string;
+}) {
+
   const isUser = message.role === "user";
   const text = message.parts
     .map((p) => (p.type === "text" ? p.text : ""))
